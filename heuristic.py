@@ -7,6 +7,12 @@ import bisect
 
 T_MAX = 0
 
+'''
+slot: (start, end]
+ex: slot.start=0  slot.end = 5
+duration: 5
+availabe time: 0, 1, 2, 3, 4 
+'''
 class Slot:
 	def __init__(self, start, end):
 		self.start = start
@@ -59,6 +65,8 @@ class Request:
 		self.catch_time = 0
 		self.finish_time = 0
 		self.ideal_slots = [0] * num_servers
+		for j in range(num_servers):
+			self.ideal_slots[j] = []
 		self.earliest_start_time = 0 # = T_request
 
 def check_freshness(request, j, jj):
@@ -166,7 +174,7 @@ def read_inputs():
 		request.size = services[request.service_type].size
 
 
-def fit(ideal_slot, request, server):
+def ideal_fit(ideal_slot, request, server):
 	is_scheduled = False
 	T_compute = services[request.service_type].T_compute[server.server_id]
 
@@ -227,7 +235,10 @@ def ideal_scheduling(request, server_loading_list):
 			if(T_compute + T_deliver <= request.freshness and t_in <= request.deadline):
 				start = max(T_request, t_in - T_deliver - T_compute)
 				end = min(request.deadline - T_deliver, t_out - T_deliver)
-				if((end - start > T_compute) and (fit(Slot(start, end), request, servers[S_exe]) == True)):
+				ideal_slot = Slot(start, end)
+				ideal_slot.S_deliver = S_deliver 
+				request.ideal_slots[S_exe].append(ideal_slot)
+				if((end - start > T_compute) and (ideal_fit(ideal_slot, request, servers[S_exe]) == True)):
 					request.S_exe = S_exe
 					request.S_deliver = S_deliver
 					request.T_compute = T_compute
@@ -236,9 +247,84 @@ def ideal_scheduling(request, server_loading_list):
 					return True
 
 
+# TODO: need to consider freshness
+def non_ideal_fit(request, server):
+	is_scheduled = False
+	T_compute = services[request.service_type].T_compute[server.server_id]
+	t_earliest_start = services[request.service_type].T_request[server.server_id]
+	t_latest_start = max(ideal_slot.end for ideal_slot in request.ideal_slots[server.server_id]) - T_compute
+	ideal_ends = []
+
+
+	for slot in server.slots:
+		if(slot.end - slot.start >= T_compute):
+			if((t_latest_start< slot.start) or (t_earliest_start + T_compute >= slot.end)):
+				continue
+
+			if(slot.end > t_latest_start + T_compute):
+				t_start_exe = t_latest_start
+			else:
+				t_start_exe = slot.end - T_compute
+			
+			# Find delivery server
+			index = bisect.bisect_left(request.ideal_slots[server.server_id], t_start_exe + T_compute)
+			request.S_deliver = request.ideal_slots[server.server_id][index].S_deliver
+			request.S_exe = server.server_id
+			request.T_deliver = services[request.service_type].T_deliver[S_exe][S_deliver]
+			request.start_exe_time = t_start_exe
+			T_wait_vehicle = request.ideal_slots[server.server_id][index].start - t_start_exe
+			request.catch_time = t_start_exe + T_compute + T_deliver + T_wait_vehicle
+
+			if(T_compute + T_deliver + T_wait_vehicle <= request.freshness):
+				new_slot = Slot(slot.start, t_start_exe)
+				slot.start = t_start_exe + T_compute + 1
+				if(new_slot.duration > 0):
+					server.slots.insert(server.slots.index(slot)+1, new_slot)
+				if(slot.duration <= 0):
+					server.slots.remove(slot)
+				is_scheduled = True
+				return is_scheduled
+			else:
+				continue
+
+def non_ideal_scheduling(request, server_loading_list):
+	for s in server_loading_list:
+		S_exe = s[0]
+		request.ideal_slots[S_exe].sort(key=lambda x: x.end)
+
+		if(non_ideal_fit(request, servers[S_exe]) == True):
+			return 
+		else:
+			continue
+	# Can't find any available slot
+	print("no feasible")
+
+def update_server_loading(request, server_loading_list):
+	server_loading_list.remove((request.S_exe, servers[request.S_exe].loading))
+	servers[request.S_exe].loading += request.T_compute
+	for index in range(len(server_loading_list)):
+		if(servers[request.S_exe].loading <= server_loading_list[index][0]):
+			server_loading_list.insert(index, (request.S_exe, servers[request.S_exe].loading))
+			return
+	server_loading_list.append((request.S_exe, servers[request.S_exe].loading)) 
+
+
+def accumulate_memory():
+	all_max_memory_use = 0
+
+	for request in requests:
+		request.finish_time = request.start_exe_time + request.T_compute + request.T_deliver
+		for t in range(request.finish_time, request.catch_time):
+			servers[request.S_deliver].memory[t] += request.size
+
+	for server in servers:
+		max_memory_use = max(server.memory)
+		all_max_memory_use += max_memory_use
+
+	return all_max_memory_use
 
 if __name__ == '__main__':
-
+	
 	servers = []	
 	services = []
 	vehicles = []
@@ -246,12 +332,10 @@ if __name__ == '__main__':
 
 	# Read input file and initialize parameters
 	read_inputs()
-
+	
 	# Initialize server-loading list
 	server_loading_list = []
-	#server_loading_dict = dict()
 	for server in servers:
-		#server_loading_dict.update({server.server_id: server.loading})
 		server_loading_list.append((server.server_id, server.loading))
 	
 	# Schedule tasks
@@ -259,10 +343,14 @@ if __name__ == '__main__':
 	# If it can't be scheduled in any ideal slot, schedule it in normal slot. 
 	for request in requests:
 		is_scheduled = ideal_scheduling(request, server_loading_list)
-		sys.exit()
-		if(is_scheduled == True):	
-			#update_server_loading(request, server_loading_list)
-			continue
-		#else:
-			#non_ideal_scheduling(request, server_loading_list)
-			#update_server_loading(request, server_loading_list)
+		if(is_scheduled == True):
+			pass	
+		else:
+			non_ideal_scheduling(request, server_loading_list)
+		update_server_loading(request, server_loading_list)
+
+	sol = accumulate_memory()
+	print(sol)
+	for request in requests: 
+		print(f"{request.vehicle_id} {request.service_type} {request.S_exe} {request.S_deliver} {request.start_exe_time} {request.catch_time}")
+
