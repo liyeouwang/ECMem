@@ -4,7 +4,9 @@ import sys
 import copy
 import time
 import bisect
-
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+import timeit
 T_MAX = 0
 
 '''
@@ -47,6 +49,7 @@ class Server:
 		self.slots = []
 		self.slots.append(Slot(0, T_MAX-1))
 		self.loading = 0
+		self.schedule_line = [0] * T_MAX
 
 class Request:
 	def __init__(self, vehicle_id, service_type, request_id, num_servers):
@@ -178,13 +181,14 @@ def ideal_fit(ideal_slot, request, server):
 	is_scheduled = False
 	T_compute = services[request.service_type].T_compute[server.server_id]
 
+
 	for slot in server.slots:
 		if(slot.start >= ideal_slot.start and slot.end <= ideal_slot.end):
 			if(slot.end - slot.start >= T_compute):
 				is_scheduled = True
 				request.start_exe_time = slot.end - T_compute
 				new_slot = Slot(slot.start, request.start_exe_time)
-				slot.start = request.start_exe_time + T_compute + 1
+				slot.start = request.start_exe_time + T_compute
 				if(new_slot.duration > 0):
 					server.slots.insert(server.slots.index(slot)+1, new_slot)
 				if(slot.duration <= 0):
@@ -195,7 +199,7 @@ def ideal_fit(ideal_slot, request, server):
 			if(ideal_slot.end - slot.start >= T_compute):
 				is_scheduled = True
 				request.start_exe_time = slot.start
-				slot.start = request.start_exe_time + T_compute + 1
+				slot.start = request.start_exe_time + T_compute
 				if(slot.duration <= 0):
 					server.slots.remove(slot)
 				break
@@ -213,16 +217,16 @@ def ideal_fit(ideal_slot, request, server):
 			is_scheduled = True
 			request.start_exe_time = ideal_slot.end - T_compute
 			new_slot = Slot(slot.start, request.start_exe_time)
-			slot.start = request.start_exe_time + T_compute + 1
+			slot.start = request.start_exe_time + T_compute
 			if(new_slot.duration > 0):
 				server.slots.insert(server.slots.index(slot)+1, new_slot)
 			if(slot.duration <= 0):
 				server.slots.remove(slot)
 			break
-
 	return is_scheduled
 
 def ideal_scheduling(request, server_loading_list):
+
 	for s in server_loading_list:
 		S_exe = s[0]
 		for index in range(len(vehicles[request.vehicle_id].servers)):
@@ -247,37 +251,45 @@ def ideal_scheduling(request, server_loading_list):
 					return True
 
 
+
 # TODO: need to consider freshness
 def non_ideal_fit(request, server):
 	is_scheduled = False
 	T_compute = services[request.service_type].T_compute[server.server_id]
 	t_earliest_start = services[request.service_type].T_request[server.server_id]
+	if not request.ideal_slots[server.server_id]:
+		return False
 	t_latest_start = max(ideal_slot.end for ideal_slot in request.ideal_slots[server.server_id]) - T_compute
-	ideal_ends = []
+	
 
+	ideal_ends = []
+	for ideal_slot in request.ideal_slots[server.server_id]:
+		ideal_ends.append(ideal_slot.end)
 
 	for slot in server.slots:
 		if(slot.end - slot.start >= T_compute):
-			if((t_latest_start< slot.start) or (t_earliest_start + T_compute >= slot.end)):
+			if((t_latest_start< slot.start) or (t_earliest_start + T_compute >= slot.end) or (slot.end - T_compute < t_earliest_start) or (t_latest_start < t_earliest_start)):
 				continue
 
 			if(slot.end > t_latest_start + T_compute):
 				t_start_exe = t_latest_start
 			else:
 				t_start_exe = slot.end - T_compute
-			
+
 			# Find delivery server
-			index = bisect.bisect_left(request.ideal_slots[server.server_id], t_start_exe + T_compute)
+
+			index = bisect.bisect_left(ideal_ends, t_start_exe + T_compute)
 			request.S_deliver = request.ideal_slots[server.server_id][index].S_deliver
 			request.S_exe = server.server_id
-			request.T_deliver = services[request.service_type].T_deliver[S_exe][S_deliver]
+			request.T_compute = T_compute
+			request.T_deliver = services[request.service_type].T_deliver[request.S_exe][request.S_deliver]
 			request.start_exe_time = t_start_exe
 			T_wait_vehicle = request.ideal_slots[server.server_id][index].start - t_start_exe
-			request.catch_time = t_start_exe + T_compute + T_deliver + T_wait_vehicle
+			request.catch_time = request.start_exe_time+ request.T_compute + request.T_deliver + T_wait_vehicle
 
-			if(T_compute + T_deliver + T_wait_vehicle <= request.freshness):
+			if(request.T_compute + request.T_deliver + T_wait_vehicle <= request.freshness):
 				new_slot = Slot(slot.start, t_start_exe)
-				slot.start = t_start_exe + T_compute + 1
+				slot.start = t_start_exe + request.T_compute + 1
 				if(new_slot.duration > 0):
 					server.slots.insert(server.slots.index(slot)+1, new_slot)
 				if(slot.duration <= 0):
@@ -298,6 +310,9 @@ def non_ideal_scheduling(request, server_loading_list):
 			continue
 	# Can't find any available slot
 	print("no feasible")
+	
+	#print("task count: " + str(count))
+
 
 def update_server_loading(request, server_loading_list):
 	server_loading_list.remove((request.S_exe, servers[request.S_exe].loading))
@@ -324,7 +339,8 @@ def accumulate_memory():
 	return all_max_memory_use
 
 if __name__ == '__main__':
-	
+	count = 0
+	no_feasible = 0
 	servers = []	
 	services = []
 	vehicles = []
@@ -332,7 +348,7 @@ if __name__ == '__main__':
 
 	# Read input file and initialize parameters
 	read_inputs()
-	
+	start_time = time.time()
 	# Initialize server-loading list
 	server_loading_list = []
 	for server in servers:
@@ -341,7 +357,8 @@ if __name__ == '__main__':
 	# Schedule tasks
 	# Try to schedule the task in an ideal slot 
 	# If it can't be scheduled in any ideal slot, schedule it in normal slot. 
-	for request in requests:
+	for request in tqdm(requests):
+		count += 1
 		is_scheduled = ideal_scheduling(request, server_loading_list)
 		if(is_scheduled == True):
 			pass	
@@ -349,8 +366,42 @@ if __name__ == '__main__':
 			non_ideal_scheduling(request, server_loading_list)
 		update_server_loading(request, server_loading_list)
 
+		####
+		#temp for visulaizeion
+		for i in range(request.start_exe_time, request.start_exe_time + request.T_compute):
+			servers[request.S_exe].schedule_line[i] = 1
+
+		if (no_feasible == 100):
+			break
+
+		# print(str(int((count/len(requests) * 100)))  + "%")
+		####
+
+	timeslot_used = []
+	for server in servers:
+		timeslot_used.append(server.schedule_line)
+	timeslot_used = np.array(timeslot_used)
+	
+	#show scheduling result
+	'''
+	plt.imshow(timeslot_used)
+	plt.show()
+	'''
+
+	#print(servers[0].schedule_line)
+	
 	sol = accumulate_memory()
+	#print(time.time() - start_time)
+	running_time = time.time() - start_time
+	outfile = open("time.out", "a")
+	outfile.write(f"{running_time}")
+	outfile.write("\n")
 	print(sol)
+	outfile = open("temp.out", "w")
+	outfile.write(f"{sol}")
+	outfile.write("\n")
 	for request in requests: 
-		print(f"{request.vehicle_id} {request.service_type} {request.S_exe} {request.S_deliver} {request.start_exe_time} {request.catch_time}")
+		outfile.write((f"{request.vehicle_id} {request.service_type} {request.S_exe} {request.S_deliver} {request.start_exe_time} {request.catch_time}"))
+		outfile.write("\n")
+		#print(f"{request.vehicle_id} {request.service_type} {request.S_exe} {request.S_deliver} {request.start_exe_time} {request.catch_time}")
 

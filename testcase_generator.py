@@ -4,33 +4,47 @@ import json
 from random import shuffle
 
 config = {
-    'TESTCASE_NAME': 'workload',
-    'TESTCASE_NUMS': 1,
+    'TESTCASE_NAME': 'medium_easy',
+    'TESTCASE_NUMS': 10,
     # The servers will be allocated at a X * Y grid.
     # J should always eqaul to X * Y.
-    'X': 5,
-    'Y': 5,
-    'J': 25,
+    'X': 4,
+    'Y': 4,
+    'J': 16,
 
     # The number of vehicles.
-    'I': 1,
+    'I': 40,
     
     # The number of service types.
     'K': 5,
     # The time unit limit
-    'MAX_TIME': 200,
-    'EARLIEST_DEADLINE': 0,
+    'MAX_TIME': 500,
+    'EARLIEST_DEADLINE': 250,
+
+    # Propagation delay
+    # This indicates the size of the result of a service.
+    # If the size if big, then it costs more propagation delay to send the
+    # result from execution server to delivery server.
+    # Currently, it is uniform distribution.
+    'PROPAGATION_DELAY': 1,
 
     # The properties of a service.
-    'DIFF_LOW': 1,
-    'DIFF_HIGH': 3,
-    'ABILITY_LEVEL': 2,
-    'PROB_LOW': 0.2,
-    'PROB_HIGH': 0.8,
+    #'DIFF_LOW': 20,
+    #'DIFF_HIGH': 60,
+    'DIFF_LOW': 10,
+    'DIFF_HIGH': 30,
+    'PROB_LOW': 1,
+    'PROB_HIGH': 1,
 
-    'FRESHNESS_MEAN': 10,
-    'FRESHNESS_STD': 1,
-    'FRESHNESS_MIN': 30,
+    # The computation distribution of servers
+    #'COMPUTATION_POWER': [1, 3, 5, 7],
+    #'COMPUTATION_DIST': [0.25, 0.25, 0.25, 0.25],
+    'COMPUTATION_POWER': [1, 3],
+    'COMPUTATION_DIST': [0.5, 0.5],
+
+    'FRESHNESS_MEAN': 100,
+    'FRESHNESS_STD': 20,
+    'FRESHNESS_MIN': 50,
 
     'LINGER_MEAN': 5,
     'LINGER_STD': 1,
@@ -76,7 +90,8 @@ for testcase_index in range(TESTCASE_NUMS):
         1. The distribution of Service_Tv. Right now it is uniform(1, 5).
     '''
 
-    Service_Tv = np.random.randint(1, high=5, size=K)
+    PROPAGATION_DELAY = config['PROPAGATION_DELAY']
+    Service_Tv = np.random.randint(1, high=PROPAGATION_DELAY+1, size=K)
     for j1 in range(J):
         for j2 in range(J):
             Tv[j1, j2, :] = Service_Tv * (abs(j1 // X - j2 // X) + abs(j1 % X - j2 % X))
@@ -103,10 +118,26 @@ for testcase_index in range(TESTCASE_NUMS):
     '''
     DIFF_LOW = config['DIFF_LOW']
     DIFF_HIGH = config['DIFF_HIGH']
-    ABILITY_LEVEL = config['ABILITY_LEVEL']
+    COMPUTATION_POWER = config['COMPUTATION_POWER']
+    COMPUTATION_DIST = config['COMPUTATION_DIST']
+
+    # Fill in Server_ability for each server
+    Server_ability = np.full((J, 1), COMPUTATION_DIST[-1])
+    accumulated_prob = 0.0
+    accumulated_dist = [] # [0.5, 0.3, 0.2] -> [0.5, 0.8, 1.0]
+    for prob in COMPUTATION_DIST:
+        accumulated_prob += prob
+        accumulated_dist.append(accumulated_prob)
+    for j in range(J):
+        tmp_prob = np.random.random()
+        for i, accum_prob in enumerate(accumulated_dist):
+            if (tmp_prob < accum_prob):
+                Server_ability[j] = 1 / COMPUTATION_POWER[i]
+                break
+
     Service_difficulty = np.random.randint(DIFF_LOW, high=DIFF_HIGH, size=(1, K))
-    Server_ability = np.random.randint(1, high=ABILITY_LEVEL, size=(J, 1))
     C = Server_ability * Service_difficulty
+    C = np.int_(np.ceil(C))
     C_avg = np.mean(C, axis=0) # The average computation time of each service
 
 
@@ -232,7 +263,8 @@ for testcase_index in range(TESTCASE_NUMS):
 
 # --------------------------------------------
 # Generate files
-    with open(f'./{TESTCASE_NAME}/{testcase_index}_{workload:5.4f}.in', 'w+') as f:
+    #with open(f'./{TESTCASE_NAME}/{testcase_index}_{workload:5.4f}.in', 'w+') as f:
+    with open(f'./{TESTCASE_NAME}/{testcase_index}.in', 'w+') as f:
         f.write(f"{I}\n")
         # J
         f.write(f"{J}\n")
