@@ -156,6 +156,9 @@ def read_inputs():
 			interval = interval.split()
 			period = int(interval[0])
 			server_id = int(interval[1])
+			if(server_id == -1):
+				travel_time = travel_time + period
+				continue
 			vehicles[i].servers.append(server_id)
 			vehicles[i].servers_in.append(travel_time)
 			vehicles[i].servers_out.append(travel_time + period - 1)
@@ -223,13 +226,14 @@ def ideal_fit(ideal_slot, request, server):
 			if(slot.duration <= 0):
 				server.slots.remove(slot)
 			break
+	#print("is_scheduled", is_scheduled)
 	return is_scheduled
 
 def ideal_scheduling(request, server_loading_list):
 
 	for s in server_loading_list:
 		S_exe = s[0]
-		for index in range(len(vehicles[request.vehicle_id].servers)):
+		for index in range(len(vehicles[request.vehicle_id].servers)-1, -1 , -1):
 			S_deliver = vehicles[request.vehicle_id].servers[index]
 			T_compute = services[request.service_type].T_compute[S_exe]
 			T_deliver = services[request.service_type].T_deliver[S_exe][S_deliver]
@@ -238,16 +242,20 @@ def ideal_scheduling(request, server_loading_list):
 			t_out = vehicles[request.vehicle_id].servers_out[index]
 			if(T_compute + T_deliver <= request.freshness and t_in <= request.deadline):
 				start = max(T_request, t_in - T_deliver - T_compute)
+				#print(t_out)
+				#print(request.deadline)
 				end = min(request.deadline - T_deliver, t_out - T_deliver)
 				ideal_slot = Slot(start, end)
 				ideal_slot.S_deliver = S_deliver 
 				request.ideal_slots[S_exe].append(ideal_slot)
-				if((end - start > T_compute) and (ideal_fit(ideal_slot, request, servers[S_exe]) == True)):
+				#print("S_exe", S_exe, "ideal_slot.start", ideal_slot.start, "ideal_slot.end", ideal_slot.end)
+				if((end - start >= T_compute) and (ideal_fit(ideal_slot, request, servers[S_exe]) == True)):
 					request.S_exe = S_exe
 					request.S_deliver = S_deliver
 					request.T_compute = T_compute
 					request.T_deliver = T_deliver
-					request.catch_time = request.start_exe_time + T_compute + T_deliver
+					request.catch_time = request.start_exe_time + T_compute + T_deliver 
+					#print("id", request.request_id, "S_exe", request.S_exe, "S_deliver", request.S_deliver, "request.start_exe_time", request.start_exe_time, "request.T_deliver", request.T_deliver, "request.catch_time", request.catch_time)
 					return True
 
 
@@ -305,12 +313,13 @@ def non_ideal_scheduling(request, server_loading_list):
 		request.ideal_slots[S_exe].sort(key=lambda x: x.end)
 
 		if(non_ideal_fit(request, servers[S_exe]) == True):
+			#print("non_ideal_fit")
 			return 
 		else:
 			continue
 	# Can't find any available slot
 	print("no feasible")
-	
+	#print(f"{request.freshness} {request.deadline} {request.size} {request.request_id}")
 	#print("task count: " + str(count))
 
 
@@ -354,10 +363,24 @@ if __name__ == '__main__':
 	for server in servers:
 		server_loading_list.append((server.server_id, server.loading))
 	
+	# sort requests
+	
+	requests.sort(key=lambda x: x.deadline, reverse=False)
+	requests_2 = requests[len(requests)//2:]
+	requests_2.sort(key=lambda x: x.size, reverse=True)
+	requests = requests[:len(requests)//2]
+	for r in requests_2:
+		requests.append(r)
+	
+	
+	#requests.sort(key=lambda x: x.size, reverse=True)
+	
+
 	# Schedule tasks
 	# Try to schedule the task in an ideal slot 
 	# If it can't be scheduled in any ideal slot, schedule it in normal slot. 
-	for request in tqdm(requests):
+	#for request in tqdm(requests):
+	for request in requests:
 		count += 1
 		is_scheduled = ideal_scheduling(request, server_loading_list)
 		if(is_scheduled == True):
@@ -382,6 +405,7 @@ if __name__ == '__main__':
 		timeslot_used.append(server.schedule_line)
 	timeslot_used = np.array(timeslot_used)
 	
+
 	#show scheduling result
 	'''
 	plt.imshow(timeslot_used)
@@ -391,17 +415,54 @@ if __name__ == '__main__':
 	#print(servers[0].schedule_line)
 	
 	sol = accumulate_memory()
+
+	# running time
 	#print(time.time() - start_time)
 	running_time = time.time() - start_time
 	outfile = open("time.out", "a")
 	outfile.write(f"{running_time}")
 	outfile.write("\n")
-	print(sol)
+
+	outfile = open("sol.out", "a")
+	outfile.write(f"{sol}")
+	outfile.write("\n")
+
+	#print(sol)
 	outfile = open("temp.out", "w")
 	outfile.write(f"{sol}")
 	outfile.write("\n")
 	for request in requests: 
+		#print(f"{request.T_compute} {request.T_deliver}")
 		outfile.write((f"{request.vehicle_id} {request.service_type} {request.S_exe} {request.S_deliver} {request.start_exe_time} {request.catch_time}"))
 		outfile.write("\n")
 		#print(f"{request.vehicle_id} {request.service_type} {request.S_exe} {request.S_deliver} {request.start_exe_time} {request.catch_time}")
 
+	# write csv
+	import csv
+	T_computes = []
+	T_delivers = []
+	T_wait_vehicles = []
+	T_total = []
+	T_freshness = []
+	for request in requests:
+		T_computes.append(request.T_compute)
+		T_delivers.append(request.T_deliver)
+		T_wait_vehicles.append(request.catch_time - request.finish_time)
+		T_total.append(request.T_compute + request.T_deliver + request.catch_time - request.finish_time)
+		T_freshness.append(request.freshness)
+	rows = zip(T_computes, T_delivers, T_wait_vehicles, T_total, T_freshness)
+	with open('stats.csv', "w") as f:
+		writer = csv.writer(f)
+		writer.writerow(['T_computes', 'T_delivers', 'T_wait_vehicles', 'T_total', 'T_freshness'])
+		for row in rows:
+			writer.writerow(row)
+
+
+	'''
+	rows = zip(kaggle_docid, kaggle_predicted_results)
+	with open('test_NB.csv', "w") as f:
+	    writer = csv.writer(f)
+	    writer.writerow(['Id', 'Value'])
+    for row in rows:
+        writer.writerow(row)
+	'''

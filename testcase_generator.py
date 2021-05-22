@@ -4,22 +4,24 @@ import json
 from random import shuffle
 
 config = {
-    'TESTCASE_NAME': 'medium_easy',
+    'TESTCASE_NAME': 's_e',
     'TESTCASE_NUMS': 10,
     # The servers will be allocated at a X * Y grid.
     # J should always eqaul to X * Y.
-    'X': 4,
-    'Y': 4,
-    'J': 16,
+    'X': 1,
+    'Y': 2,
+    'J': 2,
 
     # The number of vehicles.
-    'I': 40,
+    'I': 2,
     
     # The number of service types.
     'K': 5,
+    # Total tasks = I*K
+
     # The time unit limit
-    'MAX_TIME': 500,
-    'EARLIEST_DEADLINE': 250,
+    'MAX_TIME': 25,
+    #'EARLIEST_DEADLINE': 50,
 
     # Propagation delay
     # This indicates the size of the result of a service.
@@ -31,26 +33,29 @@ config = {
     # The properties of a service.
     #'DIFF_LOW': 20,
     #'DIFF_HIGH': 60,
-    'DIFF_LOW': 10,
-    'DIFF_HIGH': 30,
+    'DIFF_LOW': 1,
+    'DIFF_HIGH': 2,
     'PROB_LOW': 1,
     'PROB_HIGH': 1,
 
     # The computation distribution of servers
     #'COMPUTATION_POWER': [1, 3, 5, 7],
     #'COMPUTATION_DIST': [0.25, 0.25, 0.25, 0.25],
-    'COMPUTATION_POWER': [1, 3],
-    'COMPUTATION_DIST': [0.5, 0.5],
+    'COMPUTATION_POWER': [1],
+    'COMPUTATION_DIST': [1],
 
-    'FRESHNESS_MEAN': 100,
-    'FRESHNESS_STD': 20,
-    'FRESHNESS_MIN': 50,
+    'FRESHNESS_MEAN': 150,
+    'FRESHNESS_STD': 2,
+    'FRESHNESS_MIN': 100,
 
-    'LINGER_MEAN': 5,
+    'LINGER_MEAN': 6,
     'LINGER_STD': 1,
 
-    'MEMORY_MEAN': 20,
-    'MEMORY_STD': 5
+    'GAP_MEAN': 0,
+    'GAP_STD': 0,
+
+    'MEMORY_MEAN': 50,
+    'MEMORY_STD': 10
 }
 TESTCASE_NAME = config['TESTCASE_NAME']
 TESTCASE_NUMS = config['TESTCASE_NUMS']
@@ -104,6 +109,8 @@ for testcase_index in range(TESTCASE_NUMS):
         1. How to randomly decide the value?
     '''
     T = np.random.randint(0, MAX_TIME // 4, size=(J, K))
+    #T_avg = np.mean(T, axis=0)
+    #T = np.random.randint(0, 1, size=(J, K))
 
     '''
     --------------------------------------------------------------------
@@ -154,17 +161,21 @@ for testcase_index in range(TESTCASE_NUMS):
     FRESHNESS_MEAN = config['FRESHNESS_MEAN']
     FRESHNESS_STD = config['FRESHNESS_STD']
     FRESHNESS_MIN = config['FRESHNESS_MIN']
-    EARLIEST_DEADLINE = config['EARLIEST_DEADLINE']
+    #EARLIEST_DEADLINE = config['EARLIEST_DEADLINE']
+    GAP_MEAN = config['GAP_MEAN']
+
     workload = 0
     Service_prob = np.array([(PROB_HIGH - PROB_LOW) * np.random.random() + PROB_LOW for _ in range(K)])
     for k in range(K):
         for i in range(I):
             if (np.random.random() < Service_prob[k]):
                 workload += C_avg[k]
-                D[i][k] = np.random.randint(EARLIEST_DEADLINE, high=MAX_TIME, dtype=int)
-
-                fresh = int(np.random.normal(FRESHNESS_MEAN,  FRESHNESS_STD) // 1)
-                F[i][k] = FRESHNESS_MIN if fresh < FRESHNESS_MIN else fresh
+                #D[i][k] = np.random.randint(EARLIEST_DEADLINE, high=MAX_TIME, dtype=int)
+                D[i][k] = np.random.randint((MAX_TIME * 0.8 + C_avg[k]), high=MAX_TIME, dtype=int)
+                #fresh = int(np.random.normal(FRESHNESS_MEAN,  FRESHNESS_STD) // 1)
+                fresh = C_avg[k] + GAP_MEAN + int(np.random.normal(FRESHNESS_MEAN,  FRESHNESS_STD) // 1)
+                #F[i][k] = FRESHNESS_MIN if fresh < FRESHNESS_MIN else fresh
+                F[i][k] = (C_avg[k] + GAP_MEAN + FRESHNESS_MIN) if fresh < FRESHNESS_MIN else fresh
 
 
 
@@ -180,6 +191,9 @@ for testcase_index in range(TESTCASE_NUMS):
     '''
     LINGER_MEAN = config['LINGER_MEAN']
     LINGER_STD = config['LINGER_STD']
+    GAP_MEAN = config['GAP_MEAN']
+    GAP_STD = config['GAP_STD']
+
     for i in range(I):
         t = 0
         src_loc = np.random.randint(0, high=J, dtype=int)
@@ -221,7 +235,9 @@ for testcase_index in range(TESTCASE_NUMS):
                 route.extend([4 for _ in range(-delta_y)])
             shuffle(route)
 
-            
+
+            R[i].append((np.random.randint(0, high=5, dtype=int), -1))
+
             for r in route:
                 linger_time = int(np.random.normal(LINGER_MEAN, LINGER_STD)//1)
                 if linger_time <= 0:
@@ -242,6 +258,17 @@ for testcase_index in range(TESTCASE_NUMS):
                     src_y = src_y - 1
                 src_x = src_x % X
                 src_y = src_y % Y
+
+                #gap time 
+                gap_time = int(np.random.normal(GAP_MEAN, GAP_STD)//1)
+                if gap_time <= 0:
+                    gap_time = 1
+                if (t + gap_time >= MAX_TIME):
+                    R[i].append((MAX_TIME - t, -1))
+                    t += gap_time
+                    break
+                R[i].append((gap_time, -1))
+                t += gap_time
 
             if t >= MAX_TIME:
                 break
