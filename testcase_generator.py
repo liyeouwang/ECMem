@@ -4,23 +4,23 @@ import json
 from random import shuffle
 
 config = {
-    'TESTCASE_NAME': 's_e',
+    'TESTCASE_NAME': 'T_request',
     'TESTCASE_NUMS': 10,
     # The servers will be allocated at a X * Y grid.
     # J should always eqaul to X * Y.
-    'X': 1,
-    'Y': 2,
-    'J': 2,
+    'X': 4,
+    'Y': 4,
+    'J': 16,
 
     # The number of vehicles.
-    'I': 2,
+    'I': 20,
     
     # The number of service types.
-    'K': 5,
+    'K': 10,
     # Total tasks = I*K
 
     # The time unit limit
-    'MAX_TIME': 25,
+    'MAX_TIME': 100,
     #'EARLIEST_DEADLINE': 50,
 
     # Propagation delay
@@ -28,31 +28,31 @@ config = {
     # If the size if big, then it costs more propagation delay to send the
     # result from execution server to delivery server.
     # Currently, it is uniform distribution.
-    'PROPAGATION_DELAY': 1,
+    'PROPAGATION_DELAY': 5,
 
     # The properties of a service.
     #'DIFF_LOW': 20,
     #'DIFF_HIGH': 60,
     'DIFF_LOW': 1,
-    'DIFF_HIGH': 2,
+    'DIFF_HIGH': 50,
     'PROB_LOW': 1,
     'PROB_HIGH': 1,
 
     # The computation distribution of servers
     #'COMPUTATION_POWER': [1, 3, 5, 7],
     #'COMPUTATION_DIST': [0.25, 0.25, 0.25, 0.25],
-    'COMPUTATION_POWER': [1],
-    'COMPUTATION_DIST': [1],
+    'COMPUTATION_POWER': [2, 4, 6, 8, 10],
+    'COMPUTATION_DIST': [0.2, 0.2, 0.2, 0.2, 0.2],
 
-    'FRESHNESS_MEAN': 150,
+    'FRESHNESS_MEAN': 15,
     'FRESHNESS_STD': 2,
-    'FRESHNESS_MIN': 100,
+    'FRESHNESS_MIN': 10,
 
-    'LINGER_MEAN': 6,
-    'LINGER_STD': 1,
+    'LINGER_MEAN': 10,
+    'LINGER_STD': 2,
 
-    'GAP_MEAN': 0,
-    'GAP_STD': 0,
+    'GAP_MEAN': 10,
+    'GAP_STD': 2,
 
     'MEMORY_MEAN': 50,
     'MEMORY_STD': 10
@@ -73,7 +73,8 @@ if (not os.path.exists(TESTCASE_NAME)):
 
 for testcase_index in range(TESTCASE_NUMS):
     # Initialization
-    T = np.zeros((J, K), dtype=int)
+    #T = np.zeros((J, K), dtype=int)
+    T = np.zeros((I, J, K), dtype=int)
     C = np.full((J, K), np.inf, dtype=int)
     Tv = np.full((J, J, K), np.inf, dtype=int)
     D = np.full((I, K), -1, dtype=int)
@@ -108,7 +109,8 @@ for testcase_index in range(TESTCASE_NUMS):
     TODO:
         1. How to randomly decide the value?
     '''
-    T = np.random.randint(0, MAX_TIME // 4, size=(J, K))
+    #T = np.random.randint(0, MAX_TIME // 4, size=(J, K))
+    T = np.random.randint(0, MAX_TIME // 4, size=(I, J, K))
     #T_avg = np.mean(T, axis=0)
     #T = np.random.randint(0, 1, size=(J, K))
 
@@ -196,6 +198,10 @@ for testcase_index in range(TESTCASE_NUMS):
 
     for i in range(I):
         t = 0
+        enter_time = np.random.randint(0, high= 0.5*MAX_TIME, dtype=int)
+        if(enter_time > 0):
+            R[i].append((enter_time, -1))
+            t += enter_time
         src_loc = np.random.randint(0, high=J, dtype=int)
         while True:
             # Determine destination.
@@ -234,9 +240,6 @@ for testcase_index in range(TESTCASE_NUMS):
             if (delta_y < 0):
                 route.extend([4 for _ in range(-delta_y)])
             shuffle(route)
-
-
-            R[i].append((np.random.randint(0, high=5, dtype=int), -1))
 
             for r in route:
                 linger_time = int(np.random.normal(LINGER_MEAN, LINGER_STD)//1)
@@ -300,10 +303,11 @@ for testcase_index in range(TESTCASE_NUMS):
         # T_MAX
         f.write(f"{MAX_TIME}\n")
         # T
-        for j in range(J):
-            for k in range(K):
-                f.write(f"{T[j][k]} ")
-            f.write("\n")
+        for i in range(I):
+            for j in range(J):
+                for k in range(K):
+                    f.write(f"{T[i][j][k]} ")
+                f.write("\n")
         # C
         for j in range(J):
             for k in range(K):
