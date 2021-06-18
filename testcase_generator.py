@@ -4,23 +4,23 @@ import json
 from random import shuffle
 
 config = {
-    'TESTCASE_NAME': 'T_request',
+    'TESTCASE_NAME': 'l_I190_K50',
     'TESTCASE_NUMS': 10,
     # The servers will be allocated at a X * Y grid.
     # J should always eqaul to X * Y.
-    'X': 4,
-    'Y': 4,
-    'J': 16,
+    'X': 10,
+    'Y': 10,
+    'J': 100,
 
     # The number of vehicles.
-    'I': 20,
+    'I': 190,
     
     # The number of service types.
-    'K': 10,
+    'K': 50,
     # Total tasks = I*K
 
     # The time unit limit
-    'MAX_TIME': 100,
+    'MAX_TIME': 500,
     #'EARLIEST_DEADLINE': 50,
 
     # Propagation delay
@@ -29,6 +29,7 @@ config = {
     # result from execution server to delivery server.
     # Currently, it is uniform distribution.
     'PROPAGATION_DELAY': 5,
+    'CONNECTED_PROB': 0.5,  #0.0 ~ 1.0
 
     # The properties of a service.
     #'DIFF_LOW': 20,
@@ -42,10 +43,10 @@ config = {
     #'COMPUTATION_POWER': [1, 3, 5, 7],
     #'COMPUTATION_DIST': [0.25, 0.25, 0.25, 0.25],
     'COMPUTATION_POWER': [2, 4, 6, 8, 10],
-    'COMPUTATION_DIST': [0.2, 0.2, 0.2, 0.2, 0.2],
+    'COMPUTATION_DIST': [0.2, 0.2, 0.2, 0.2, 0.2 ],
 
     'FRESHNESS_MEAN': 15,
-    'FRESHNESS_STD': 2,
+    'FRESHNESS_STD': 5,
     'FRESHNESS_MIN': 10,
 
     'LINGER_MEAN': 10,
@@ -97,10 +98,14 @@ for testcase_index in range(TESTCASE_NUMS):
     '''
 
     PROPAGATION_DELAY = config['PROPAGATION_DELAY']
+    CONNECTED_PROB = config['CONNECTED_PROB']
     Service_Tv = np.random.randint(1, high=PROPAGATION_DELAY+1, size=K)
     for j1 in range(J):
         for j2 in range(J):
-            Tv[j1, j2, :] = Service_Tv * (abs(j1 // X - j2 // X) + abs(j1 % X - j2 % X))
+            if(np.random.random() <= CONNECTED_PROB):
+                Tv[j1, j2, :] = Service_Tv * (abs(j1 // X - j2 // X) + abs(j1 % X - j2 % X))
+            else:
+                Tv[j1, j2, :] = -1
 
 
     '''
@@ -175,7 +180,8 @@ for testcase_index in range(TESTCASE_NUMS):
                 #D[i][k] = np.random.randint(EARLIEST_DEADLINE, high=MAX_TIME, dtype=int)
                 D[i][k] = np.random.randint((MAX_TIME * 0.8 + C_avg[k]), high=MAX_TIME, dtype=int)
                 #fresh = int(np.random.normal(FRESHNESS_MEAN,  FRESHNESS_STD) // 1)
-                fresh = C_avg[k] + GAP_MEAN + int(np.random.normal(FRESHNESS_MEAN,  FRESHNESS_STD) // 1)
+                #fresh = C_avg[k] + GAP_MEAN + int(np.random.normal(FRESHNESS_MEAN,  FRESHNESS_STD) // 1)
+                fresh = int(np.random.normal(MAX_TIME * 0.5,  FRESHNESS_STD) // 1)
                 #F[i][k] = FRESHNESS_MIN if fresh < FRESHNESS_MIN else fresh
                 F[i][k] = (C_avg[k] + GAP_MEAN + FRESHNESS_MIN) if fresh < FRESHNESS_MIN else fresh
 
@@ -198,10 +204,12 @@ for testcase_index in range(TESTCASE_NUMS):
 
     for i in range(I):
         t = 0
+        '''
         enter_time = np.random.randint(0, high= 0.5*MAX_TIME, dtype=int)
         if(enter_time > 0):
             R[i].append((enter_time, -1))
             t += enter_time
+        '''
         src_loc = np.random.randint(0, high=J, dtype=int)
         while True:
             # Determine destination.
