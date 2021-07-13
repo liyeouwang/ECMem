@@ -4,7 +4,7 @@ import json
 from random import shuffle
 
 config = {
-    'TESTCASE_NAME': 'l_I190_K50',
+    'TESTCASE_NAME': 'LB_I45_K200',
     'TESTCASE_NUMS': 10,
     # The servers will be allocated at a X * Y grid.
     # J should always eqaul to X * Y.
@@ -13,10 +13,10 @@ config = {
     'J': 100,
 
     # The number of vehicles.
-    'I': 190,
+    'I': 45,
     
     # The number of service types.
-    'K': 50,
+    'K': 200,
     # Total tasks = I*K
 
     # The time unit limit

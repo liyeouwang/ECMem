@@ -482,14 +482,15 @@ def simualte_annealing(sol):
 			if(cur_sol < best_sol):
 				best_sol = cur_sol
 				best_requests = deepcopy(requests)
-				print("best_sol = " + str(best_sol))				
+				#print("best_sol = " + str(best_sol))				
 				if(best_sol == 0):
 					break
 		else:
 			if(np.random.rand() <= math.exp(- delta_cost / T )):
 				cur_sol = new_sol			
 		T *= r
-	print(best_sol)	
+	#print(best_sol)
+	return best_sol	
 
 if __name__ == '__main__':
 	count = 0
@@ -521,6 +522,11 @@ if __name__ == '__main__':
 	#sort_mode = 2 # for load balance 
 	#sort_mode = 0
 	#sort_mode = 3
+	#if(sys.argv[2] == "LB_demand"):
+	#	sort_mode = 2
+	#elif(sys.argv[2] == "LB_mem"):
+	#	sort_mode = 3
+
 	if(sort_mode == 0):
 		requests.sort(key=lambda x: x.T_compute_avg, reverse=True)
 		requests_2 = requests[len(requests)//2:]
@@ -570,10 +576,10 @@ if __name__ == '__main__':
 		index += 1
 	
 	sol = accumulate_memory()
-	'''
-	if(sol > 0):
-		simualte_annealing(sol)
-	'''
+	
+	#if(sol > 0):
+	#	sol = simualte_annealing(sol)
+	
 	no_feasible = 0
 	for request in requests:
 		if(request.is_feasible == False):
@@ -616,10 +622,10 @@ if __name__ == '__main__':
 		loads.append(server_loading_list[i][1])
 		outfile.write(f"{server_loading_list[i][1]} ")
 	outfile.write("\n")
-	outfile.write(f"avg: {float(sum(loads))/len(servers)}\n")
-	outfile.write(f"std: {np.std(loads, ddof=1)}\n")
-	outfile.write(f"max: {max(loads)}\n")
-	outfile.write(f"min: {min(loads)}\n")
+	outfile.write(f"{float(sum(loads))/len(servers)}\n")
+	outfile.write(f"{np.std(loads, ddof=1)}\n")
+	outfile.write(f"{max(loads)}\n")
+	outfile.write(f"{min(loads)}\n")
 	outfile.close()
 
 	'''
