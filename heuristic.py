@@ -82,20 +82,11 @@ class Request:
 			self.ideal_slots[j] = []
 		self.is_feasible = True
 
-def check_freshness(request, j, jj):
-	if(services[request.service_type].T_compute[j] + services[request.service_type].T_deliver[j][jj] <= freshness):
-		return True
-	else:
-		return False
-
-def check_deadline(request, time):
-	if(time <= request.deadline):
-		return True
-	else:
-		return False
-
+'''
+--------------------------------------------------------------------
+Read the input file created by testcase_generator.py
+'''
 def read_inputs():
-
 	num_vehicles = int(input())
 	num_servers = int(input())	
 	num_services = int(input())
@@ -103,19 +94,19 @@ def read_inputs():
 	global T_MAX
 	T_MAX = int(input())
 
-	# Servers 
+	# Construct the server list 
 	for j in range(num_servers):
 		servers.append(Server(j, num_vehicles, T_MAX))
 
-	# Vehicles 
+	# Construct the vehicle list 
 	for i in range(num_vehicles):
 		vehicles.append(Vehicle(i, num_servers))
 
-	# Services 
+	# Construct the service list 
 	for k in range(num_services):
 		services.append(Service(k, num_servers, num_vehicles))
 
-	# Eariest start-execute time of each service k of vehicle i on server j 
+	# Obtain the eariest start-execute time of each service k of vehicle i on server j 
 	for k in range(num_services):
 		for i in range(num_vehicles):
 			services[k].T_request[i] = [0] * num_servers
@@ -125,29 +116,27 @@ def read_inputs():
 			for k in range(num_services):
 				services[k].T_request[i][j] = tmp[k]
 	
+	# Calculate the average eariest start-execute time of each service k of vehicle i among all servers 
 	for k in range(num_services):
 		for i in range(num_vehicles):
 			for j in range(num_servers):			
 				services[k].T_request_avg[i] += services[k].T_request[i][j]
 			services[k].T_request_avg[i] = services[k].T_request_avg[i] / num_servers
-			#print(services[k].T_request_avg[i], end=" ")
-		#print("\n")
 
-
-	# Computing time of each task k on server j 
+	# Obtain the computing time of each service k on server j 
 	for j in range(num_servers):
 		T_computes = [int(x) for x in input().split()]
 		for k in range(num_services):
 			services[k].T_compute[j] = T_computes[k]
 
+	# Calculate the average computing time of each service k 
 	for k in range(num_services):
 		for j in range(num_servers):
 			services[k].T_compute_avg += services[k].T_compute[j]
 		services[k].T_compute_avg = services[k].T_compute_avg / num_servers
-		#print(services[k].T_compute_avg, end=" ")
-	#print("\n")
 
-	# Delivering time of each service k from server j to server jj
+
+	# Obtain the delivering time of each service k from server j to server jj
 	for k in range(num_services):
 		for j in range(num_servers):
 			services[k].T_deliver[j] = [0] * num_servers
@@ -157,7 +146,7 @@ def read_inputs():
 			for k in range(num_services):
 				services[k].T_deliver[j][jj] = T_delivers[k]
 
-	# Deadline of each task 
+	# Obtain the deadline of each task 
 	num_requests = 0
 	for i in range(num_vehicles):
 		deadlines = [int(x) for x in input().split()]
@@ -167,18 +156,18 @@ def read_inputs():
 				requests.append(Request(i, k, num_requests, num_servers))
 				num_requests += 1
 
-	# Ideal time slots of each task on each server
+	# Create the list of ideal time slots for each task on each server
 	for r in range(len(requests)):
 		for j in range(len(servers)):
 			requests[r].ideal_slots[j] = []
 
-	# Fresshness of each service 
+	# Obtain the fresshness of each service k for each vehicle i
 	for i in range(num_vehicles):
 		freshnesses = [int(x) for x in input().split()]
 		for k in range(num_services):
 			services[k].freshness[i] = freshnesses[k]
 
-	# Route of each vehicle 
+	# Obtain the route of each vehicle i
 	for i in range(num_vehicles):
 		route = [x for x in input().split(", ")]
 		travel_time = 0
@@ -194,32 +183,37 @@ def read_inputs():
 			vehicles[i].servers_out.append(travel_time + period - 1)
 			travel_time = travel_time + period
 
-	# Memory size of each service 
+	# Obtain the memory size of each service k
 	sizes = [int(x) for x in input().split()]
 	for k in range(num_services):
 		services[k].size = sizes[k]
 
-	# Capacity of each server (this attribute is not used)
+	# Obtain the capacity of each server (this attribute is not used)
 	capacities = [int(x) for x in input().split()]
 	for j in range(num_servers):
 		servers[j].capacity = capacities[j]
 
+	# Initialize the tasks
 	for request in requests:
 		request.deadline = services[request.service_type].deadline[request.vehicle_id]
 		request.freshness = services[request.service_type].freshness[request.vehicle_id]
 		request.size = services[request.service_type].size
 		request.T_compute_avg = services[request.service_type].T_compute_avg
-		request.T_request_avg = services[request.service_type].T_request_avg[request.vehicle_id]
+		request.T_request_avg = services[request.service_type].T_request_avg[request.vehicle_id]	
 
-#def sort_requests(requests):
-	
-
+'''
+--------------------------------------------------------------------
+Check if the task can be scheduled in the ideal slot
+'''
 def ideal_fit(ideal_slot, request, server):
 	is_scheduled = False
 	T_compute = services[request.service_type].T_compute[server.server_id]
 
-
+	# Iterate all slots in the server to find feasible ideal slot to schedule the task
 	for slot in server.slots:
+		# Case 1
+		# ---[     ideal slot      ]---
+		# ------[ feasible slot ]------
 		if(slot.start >= ideal_slot.start and slot.end <= ideal_slot.end):
 			if(slot.end - slot.start >= T_compute):
 				is_scheduled = True
@@ -232,7 +226,10 @@ def ideal_fit(ideal_slot, request, server):
 				if(slot.duration <= 0):
 					server.slots.remove(slot)
 				break
-
+		
+		# Case 2
+		# ---[     ideal slot      ]---------
+		# ------[    feasible slot    ]------
 		if(slot.start >= ideal_slot.start and slot.start <= ideal_slot.end and slot.end >= ideal_slot.end):
 			if(ideal_slot.end - slot.start >= T_compute):
 				is_scheduled = True
@@ -242,7 +239,10 @@ def ideal_fit(ideal_slot, request, server):
 				if(slot.duration <= 0):
 					server.slots.remove(slot)
 				break
-
+		
+		# Case 3
+		# ------[   ideal slot     ]---------
+		# ----[  feasible slot  ]------------
 		if(slot.start <= ideal_slot.start and slot.end >= ideal_slot.start and slot.end <= ideal_slot.end):
 			if(slot.end - ideal_slot.start >= T_compute):
 				is_scheduled = True
@@ -252,7 +252,10 @@ def ideal_fit(ideal_slot, request, server):
 				if(slot.duration <= 0):
 					server.slots.remove(slot)
 				break
-
+		
+		# Case 4
+		# -------[   ideal slot  ]---------
+		# ----[    feasible slot    ]------
 		if(slot.start <= ideal_slot.start and slot.end >= ideal_slot.end):
 			is_scheduled = True
 			request.start_exe_time = ideal_slot.end - T_compute
@@ -264,42 +267,57 @@ def ideal_fit(ideal_slot, request, server):
 			if(slot.duration <= 0):
 				server.slots.remove(slot)
 			break
-	#print("is_scheduled", is_scheduled)
+
 	return is_scheduled
 
+'''
+--------------------------------------------------------------------
+Iterate all possible delivery edge servers to find an ideal slot to schedule
+'''
 def ideal_scheduling(request, S_exe):
 
-	#for s in server_loading_list:
-		#S_exe = s[0]
+	# Iterate all possible delivery edge servers of the vehicle
+	# Start from the last edge server the vehicle will pass by
 	for index in range(len(vehicles[request.vehicle_id].servers)-1, -1 , -1):
 		S_deliver = vehicles[request.vehicle_id].servers[index]
 		T_compute = services[request.service_type].T_compute[S_exe]
 		T_deliver = services[request.service_type].T_deliver[S_exe][S_deliver]
+
+		# There is no connection between the execution edge server and the possible delivery edge server
 		if(T_deliver == -1):
 			continue
+
 		T_request = services[request.service_type].T_request[request.vehicle_id][S_exe]
+
+		# The time the vehicle enter the covering range of the possible delivery edge server 
 		t_in = vehicles[request.vehicle_id].servers_in[index]
+
+		# The time the vehicle leave the covering range of the possible delivery edge server 
 		t_out = vehicles[request.vehicle_id].servers_out[index]
+
+		# Obtain the ideal slot 
 		if(T_compute + T_deliver <= request.freshness and t_in <= request.deadline):
 			start = max(T_request, t_in - T_deliver - T_compute)
-			#print(t_out)
-			#print(request.deadline)
 			end = min(request.deadline - T_deliver, t_out - T_deliver)
 			ideal_slot = Slot(start, end)
 			ideal_slot.S_deliver = S_deliver 
 			request.ideal_slots[S_exe].append(ideal_slot)
-			#print("S_exe", S_exe, "ideal_slot.start", ideal_slot.start, "ideal_slot.end", ideal_slot.end)
+
+			# Check if the task can be scheduled in the ideal slot
 			if((end - start >= T_compute) and (ideal_fit(ideal_slot, request, servers[S_exe]) == True)):
 				request.S_exe = S_exe
 				request.S_deliver = S_deliver
 				request.T_compute = T_compute
 				request.T_deliver = T_deliver
 				request.catch_time = request.start_exe_time + T_compute + T_deliver 
-				#print("id", request.request_id, "S_exe", request.S_exe, "S_deliver", request.S_deliver, "request.start_exe_time", request.start_exe_time, "request.T_deliver", request.T_deliver, "request.catch_time", request.catch_time)
 				return True
 
 	return False
 
+'''
+--------------------------------------------------------------------
+Check if the task can be scheduled in the normal slot
+'''
 def non_ideal_fit(request, server):
 	is_scheduled = False
 	T_compute = services[request.service_type].T_compute[server.server_id]
@@ -313,6 +331,7 @@ def non_ideal_fit(request, server):
 	for ideal_slot in request.ideal_slots[server.server_id]:
 		ideal_ends.append(ideal_slot.end)
 
+	# Iterate all slots in the server to find a feasible slot for the task 
 	for slot in server.slots:
 		if(slot.end - slot.start >= T_compute):
 			if((t_latest_start< slot.start) or (t_earliest_start + T_compute >= slot.end) or (slot.end - T_compute < t_earliest_start) or (t_latest_start < t_earliest_start)):
@@ -322,8 +341,7 @@ def non_ideal_fit(request, server):
 			else:
 				t_start_exe = slot.end - T_compute
 
-			# Find delivery server
-
+			# Find delivery edge server
 			index = bisect.bisect_left(ideal_ends, t_start_exe + T_compute)
 			request.S_deliver = request.ideal_slots[server.server_id][index].S_deliver
 			request.S_exe = server.server_id
@@ -334,6 +352,8 @@ def non_ideal_fit(request, server):
 			request.start_exe_time = t_start_exe
 			T_wait_vehicle = request.ideal_slots[server.server_id][index].start - t_start_exe
 			request.catch_time = request.start_exe_time+ request.T_compute + request.T_deliver + T_wait_vehicle
+			
+			# Update the slot list
 			if(request.T_compute + request.T_deliver + T_wait_vehicle <= request.freshness):
 				new_slot = Slot(slot.start, t_start_exe)
 				slot.start = t_start_exe + request.T_compute + 1
@@ -347,40 +367,37 @@ def non_ideal_fit(request, server):
 			else:
 				continue
 
+'''
+--------------------------------------------------------------------
+Find a normal slot after iterating all servers and have not found an ideal slot to schedule the task
+'''
 def non_ideal_scheduling(request, S_exe):
-	#for s in server_loading_list:
-	#	S_exe = s[0]
 	request.ideal_slots[S_exe].sort(key=lambda x: x.end)
 
 	if(non_ideal_fit(request, servers[S_exe]) == True):
-		#print("non_ideal_fit")
 		return True
 	else:
 		return False
-	#	continue
-	# Can't find any available slot
-	#print("no feasible")
-	#print(f"{request.freshness} {request.deadline} {request.size} {request.request_id}")
-	#print("task count: " + str(count))
 
 
+'''
+--------------------------------------------------------------------
+After scheduling a task in a edge server, update the server list to maitain the order
+'''
 def update_server_loading(request, server_loading_list):
-	#print("-------")
-	#for index in range(len(server_loading_list)):
-	#	print(server_loading_list[index][1])
-	#print("-------")
 	server_loading_list.remove((request.S_exe, servers[request.S_exe].loading))
 	servers[request.S_exe].loading += request.T_compute
 	for index in range(len(server_loading_list)):
-
-		#print(servers[request.S_exe].loading, server_loading_list[index][0])
 		if(servers[request.S_exe].loading <= server_loading_list[index][1]):
-			#print("insert")
 			server_loading_list.insert(index, (request.S_exe, servers[request.S_exe].loading))
 			return
 	server_loading_list.append((request.S_exe, servers[request.S_exe].loading)) 
 
 
+'''
+--------------------------------------------------------------------
+Get the summation of the max memory usage of each server 
+'''
 def accumulate_memory():
 	all_max_memory_use = 0
 	for server in servers:
@@ -397,6 +414,11 @@ def accumulate_memory():
 
 	return all_max_memory_use
 
+
+'''
+--------------------------------------------------------------------
+(For Simulated Annealing)
+'''
 def remove_scheduled_task(request):
 	S_exe = request.S_exe
 	for i in range(len(servers[S_exe].slots)):
@@ -423,7 +445,14 @@ def remove_scheduled_task(request):
 			break
 	servers[S_exe].slots.insert(index, new_slot)
 
+'''
+--------------------------------------------------------------------
+(For Simulated Annealing)
+Random switch the execution edge servers of two tasks. 
+After switching the execution edge servers,
+we reschedule these two tasks in their new execution edge servers and update the result. 
 
+'''
 def pick_neighbor():
 	if(len(no_ideals) > 0):
 		a = np.random.choice(no_ideals)
@@ -455,15 +484,17 @@ def pick_neighbor():
 		if(is_scheduled == False):
 			break
 	if(is_scheduled == True):
-		#print("sheduled")
 		if(len(no_ideals) > 0):
 			no_ideals.remove(a)
 		requests[a] = deepcopy(request_tmp1)
 		requests[b] = deepcopy(request_tmp2)
-		#print("requests[a]:", requests[a].request_id, requests[a].S_exe, requests[a].T_compute, requests[a].S_deliver)
-		#print("\n")
-		#sys.exit()
-def simualte_annealing(sol):
+
+
+'''
+--------------------------------------------------------------------
+Simulated Annealing
+'''
+def simulated_annealing(sol):
 	#random seed
 	np.random.seed(1)
 	cur_sol = sol
@@ -473,6 +504,8 @@ def simualte_annealing(sol):
 	T = config["T"]
 	r = config["r"]
 	while T > 1:
+		if(time.time() - start_time > 300):
+			break
 		pick_neighbor()
 		new_sol = accumulate_memory()
 		#print(new_sol)
@@ -482,7 +515,7 @@ def simualte_annealing(sol):
 			if(cur_sol < best_sol):
 				best_sol = cur_sol
 				best_requests = deepcopy(requests)
-				#print("best_sol = " + str(best_sol))				
+				print("best_sol = " + str(best_sol))				
 				if(best_sol == 0):
 					break
 		else:
@@ -492,6 +525,11 @@ def simualte_annealing(sol):
 	#print(best_sol)
 	return best_sol	
 
+
+'''
+--------------------------------------------------------------------
+main 
+'''
 if __name__ == '__main__':
 	count = 0
 	no_feasible = 0
@@ -510,23 +548,26 @@ if __name__ == '__main__':
 	for server in servers:
 		server_loading_list.append((server.server_id, server.loading))
 	
-	# sort requests
+	# Sort tasks
 	sum_C = 0
 	for k in range(len(services)):
 		sum_C += services[k].T_compute_avg * len(vehicles)
-	#print("sum_C: ", sum_C, "T_MAX*len(servers)", T_MAX*len(servers))
+
+	# Decide which mode to sort the tasks
 	if(sum_C/ (T_MAX*len(servers))  >= THRESHOLD):
+		# If the load is heavy, sort the tasks by there computing demands in decreasing order
 		sort_mode = 2
 	else:
+		# If the load is not heavy, sort the tasks by there memory sizes in decreasing order
 		sort_mode = 3	
 	#sort_mode = 2 # for load balance 
-	#sort_mode = 0
-	#sort_mode = 3
+
 	#if(sys.argv[2] == "LB_demand"):
 	#	sort_mode = 2
 	#elif(sys.argv[2] == "LB_mem"):
 	#	sort_mode = 3
 
+	# Not used 
 	if(sort_mode == 0):
 		requests.sort(key=lambda x: x.T_compute_avg, reverse=True)
 		requests_2 = requests[len(requests)//2:]
@@ -534,6 +575,7 @@ if __name__ == '__main__':
 		requests = requests[:len(requests)//2]
 		for r in requests_2:
 			requests.append(r)	
+	# Not used 
 	elif(sort_mode == 1):
 		requests.sort(key=lambda x: x.deadline, reverse=False)
 		requests_2 = requests[len(requests)//2:]
@@ -541,12 +583,16 @@ if __name__ == '__main__':
 		requests = requests[:len(requests)//2]
 		for r in requests_2:
 			requests.append(r)	
+
+	# Sort by computing demands
 	elif(sort_mode == 2):
 		requests.sort(key=lambda x: x.T_compute_avg, reverse=True)
+
+	# Sort by memory sizes
 	elif(sort_mode == 3):
 		requests.sort(key=lambda x: x.size, reverse=True)	
 
-	#first
+
 	# Schedule tasks
 	# Try to schedule the task in an ideal slot 
 	# If it can't be scheduled in any ideal slot, schedule it in normal slot. 
@@ -555,11 +601,13 @@ if __name__ == '__main__':
 	for request in requests:
 		is_scheduled = False
 		server_loading_list_tmp = server_loading_list[:len(servers)//1]
+		# Try ideal scheduling first
 		for s in server_loading_list_tmp:
 			S_exe = s[0]
 			is_scheduled = ideal_scheduling(request, S_exe)
 			if(is_scheduled == True):
 				break
+		# If the task can not be scheduled in any ideal slot, try non ideal scheduling 
 		if(is_scheduled == False):
 			no_ideals.append(index)
 			for s in server_loading_list:
@@ -567,6 +615,7 @@ if __name__ == '__main__':
 				is_scheduled = non_ideal_scheduling(request, S_exe)
 				if(is_scheduled == True):					
 					break
+		# If the task can not be scheduled in any ideal slot or any normal slot, record it as an infeasible task
 		if(is_scheduled == False):
 			no_feasible += 1
 			request.is_feasible = False
@@ -575,20 +624,26 @@ if __name__ == '__main__':
 		update_server_loading(request, server_loading_list)
 		index += 1
 	
+	# Get the objective
 	sol = accumulate_memory()
 	
-	#if(sol > 0):
-	#	sol = simualte_annealing(sol)
-	
+	'''
+	# If the solution is not 0, we can run Simulated Annealing to refine the result
+	if(sol > 0):
+		sol = simulated_annealing(sol)
+	'''
+
+	# Count the number of infeasible tasks
 	no_feasible = 0
 	for request in requests:
 		if(request.is_feasible == False):
 			no_feasible += 1
 
-	# running time
 	#print(time.time() - start_time)
 	#print(sol)
 	#print(f"no_feasible: {no_feasible} rate: {no_feasible/len(requests)}")
+	
+	# Write the output files
 	running_time = time.time() - start_time
 	outfile = open("sol.out", "a")
 	outfile.write(f"{running_time}")
@@ -598,7 +653,6 @@ if __name__ == '__main__':
 	outfile.write(f"{no_feasible/len(requests)}")
 	outfile.write("\n")
 
-	
 	outfile = open("temp.out", "w")
 	outfile.write(f"{sol}")
 	outfile.write("\n")
@@ -606,7 +660,7 @@ if __name__ == '__main__':
 		outfile.write((f"{request.vehicle_id} {request.service_type} {request.S_exe} {request.S_deliver} {request.start_exe_time} {request.catch_time}"))
 		outfile.write("\n")
 
-	# write stats of tasks
+	# Write tasks stats 
 	outfile = open(sys.argv[1]+"task_stats.out", "w")
 	outfile.write(f"{no_feasible} {no_feasible/len(requests)}")
 	outfile.write("\n")
@@ -615,7 +669,8 @@ if __name__ == '__main__':
 		T_total = request.T_compute + request.T_deliver + request.catch_time - request.finish_time
 		outfile.write(f"{request.T_compute} {request.T_deliver} {T_wait_vehicle} {T_total}")
 		outfile.write("\n")
-	# write server stats 
+	
+	# Write server stats 
 	outfile = open(sys.argv[1]+"server_stats.out", "w")
 	loads = []
 	for i in range(len(server_loading_list)):
